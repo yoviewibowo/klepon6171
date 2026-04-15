@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>KLEPON6171 - Katalog Peta Online</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<style>
+body {
+    font-family: 'Poppins', sans-serif;
+    margin: 0;
+    background: #f0fdf4;
+}
+
+/* HEADER */
+.header {
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    padding: 18px 30px;
+    color: white;
+}
+
+.title { font-weight: 600; font-size: 20px; }
+.subtitle { font-size: 12px; opacity: 0.9; }
+
+/* SEARCH */
+.search-container {
+    padding: 30px 20px;
+    text-align: center;
+}
+
+.search-box input {
+    width: 100%;
+    max-width: 600px;
+    padding: 14px 20px;
+    border-radius: 30px;
+    border: none;
+    font-size: 14px;
+    outline: none;
+    box-shadow: 0 4px 15px rgba(34,197,94,0.2);
+}
+
+/* RESULT */
+.result-container {
+    max-width: 1000px;
+    margin: auto;
+    padding: 10px 20px;
+}
+
+.card {
+    background: white;
+    padding: 16px;
+    margin-bottom: 12px;
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    cursor: pointer;
+    transition: 0.2s;
+    border-left: 5px solid #22c55e;
+}
+
+.card:hover { transform: translateY(-3px); }
+
+.card-title { font-weight: 500; color: #065f46; }
+.card-sub { font-size: 13px; color: #4b5563; }
+
+/* BUTTON */
+.btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    text-decoration: none;
+    color: white;
+    margin-top: 8px;
+    display: inline-block;
+}
+
+.btn-map { background: #22c55e; }
+.btn-map:hover { background: #16a34a; }
+
+.btn-loc { background: #10b981; }
+.btn-loc:hover { background: #059669; }
+
+/* MAP */
+#map {
+    height: 420px;
+    margin: 20px;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 25px rgba(34,197,94,0.2);
+}
+
+/* EMPTY */
+.empty {
+    text-align: center;
+    color: #6b7280;
+    margin-top: 30px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+    <div class="title">🍡 KLEPON6171</div>
+    <div class="subtitle">Katalog Peta Online Kota Pontianak</div>
+</div>
+
+<div class="search-container">
+    <div class="search-box">
+        <input type="text" id="searchInput" placeholder="Cari SLS / SubSLS / Kelurahan / Kecamatan...">
+    </div>
+</div>
+
+<div class="result-container" id="resultContainer">
+    <div class="empty">Loading data...</div>
+</div>
+
+<div id="map"></div>
+
+<script>
+
+// ================= CONFIG =================
+const sheetURL = "https://opensheet.elk.sh/1WRHwLF0-nl4l5_bh-Prfhvqk0m4v_-Y-OXlL0DAoOJQ/Sheet1";
+
+let data = [];
+let geojsonLayer;
+
+// ================= MAP =================
+let map = L.map('map').setView([-0.02, 109.34], 12);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+
+// ================= LOAD GEOJSON =================
+fetch("geojson_sls.json")
+.then(res => res.json())
+.then(geojson => {
+    geojsonLayer = L.geoJSON(geojson, {
+        style: {
+            color: "#86efac",
+            weight: 1,
+            fillOpacity: 0.2
+        }
+    }).addTo(map);
+});
+
+// ================= LOAD DATA =================
+fetch(sheetURL)
+.then(res => res.json())
+.then(res => {
+    data = res;
+    document.getElementById("resultContainer").innerHTML =
+        `<div class="empty">Data siap 💚 Ketik untuk mencari...</div>`;
+})
+.catch(() => {
+    document.getElementById("resultContainer").innerHTML =
+        `<div class="empty">Gagal load data 😢</div>`;
+});
+
+// ================= DEBOUNCE =================
+function debounce(func, delay) {
+    let timeout;
+    return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+    };
+}
+
+// ================= SEARCH =================
+const input = document.getElementById("searchInput");
+const container = document.getElementById("resultContainer");
+
+const handleSearch = debounce(function() {
+
+    let keyword = input.value.toLowerCase().trim();
+
+    if(keyword === ""){
+        container.innerHTML = `<div class="empty">Ketik untuk mulai pencarian...</div>`;
+        return;
+    }
+
+    let filtered = data.filter(d =>
+        (d.nmsls || "").toLowerCase().includes(keyword) ||
+        (d.nmkelurahan || "").toLowerCase().includes(keyword) ||
+        (d.nmkec || "").toLowerCase().includes(keyword) ||
+        (d.idsls || "").toLowerCase().includes(keyword) ||
+        (d.idsubsls || "").toLowerCase().includes(keyword)
+    );
+
+    if(filtered.length === 0){
+        container.innerHTML = `<div class="empty">Data tidak ditemukan 😢</div>`;
+        return;
+    }
+
+    // PRIORITAS ID MATCH
+    filtered.sort((a,b) => {
+        let aScore = ((a.idsls || "").startsWith(keyword) || (a.idsubsls || "").startsWith(keyword)) ? 1 : 0;
+        let bScore = ((b.idsls || "").startsWith(keyword) || (b.idsubsls || "").startsWith(keyword)) ? 1 : 0;
+        return bScore - aScore;
+    });
+
+    container.innerHTML = filtered.map(d => `
+        <div class="card" onclick="zoomTo('${d.idsubsls || d.idsls}')">
+            <div class="card-title">${d.nmsls || '-'}</div>
+            <div class="card-sub">
+                ${d.nmkelurahan || '-'} • ${d.nmkec || '-'}<br>
+                ID SLS: ${d.idsls || '-'}<br>
+                ID SubSLS: ${d.idsubsls || '-'}
+            </div>
+
+            <a href="${d.linkpeta || '#'}" target="_blank" class="btn btn-map">Lihat Peta</a>
+
+            <a href="${d.linklokasi || '#'}" target="_blank" class="btn btn-loc">Google Maps</a>
+        </div>
+    `).join("");
+
+    highlightMap(filtered);
+
+}, 300);
+
+input.addEventListener("keyup", handleSearch);
+
+// ================= HIGHLIGHT =================
+function highlightMap(filtered){
+
+    if(!geojsonLayer) return;
+
+    geojsonLayer.eachLayer(layer => {
+        geojsonLayer.resetStyle(layer);
+    });
+
+    let matchedIds = filtered.map(d => d.idsubsls || d.idsls);
+
+    geojsonLayer.eachLayer(layer => {
+
+        let id = layer.feature.properties.idsubsls || layer.feature.properties.idsls;
+
+        if(matchedIds.includes(id)){
+            layer.setStyle({
+                color: "#16a34a",
+                weight: 2,
+                fillOpacity: 0.5
+            });
+
+            map.fitBounds(layer.getBounds());
+        }
+
+    });
+}
+
+// ================= ZOOM =================
+function zoomTo(id){
+
+    if(!geojsonLayer) return;
+
+    geojsonLayer.eachLayer(layer => {
+
+        let geoId = layer.feature.properties.idsubsls || layer.feature.properties.idsls;
+
+        if(geoId === id){
+            layer.setStyle({
+                color: "#15803d",
+                weight: 3,
+                fillOpacity: 0.6
+            });
+
+            map.fitBounds(layer.getBounds());
+        }
+
+    });
+}
+
+</script>
+
+</body>
+</html>
