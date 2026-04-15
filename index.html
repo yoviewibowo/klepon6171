@@ -138,7 +138,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 // ================= LOAD GEOJSON =================
-fetch("geojson_sls.json")
+fetch("final_subsls_6171_2025-1.geojson")
 .then(res => res.json())
 .then(geojson => {
     geojsonLayer = L.geoJSON(geojson, {
